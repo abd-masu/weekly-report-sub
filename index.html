@@ -28465,12 +28465,8 @@ function loadMembers(){
     const s = localStorage.getItem('wr_members');
     if(s){ MEMBERS = JSON.parse(s); return; }
   }catch(e){}
-  const EXCLUDE = ['貫渡'];
-  MEMBERS = [...new Set(
-    PROJECTS.filter(p=>p.status!=='closed')
-      .flatMap(p=>p.owner.split(/[・、\/]/).map(o=>o.replace(/[（）()]/g,'').trim()).filter(Boolean))
-      .filter(o=>o && !EXCLUDE.includes(o))
-  )].sort((a,b)=>a.localeCompare(b,'ja'));
+  // デフォルト順序で固定
+  MEMBERS = ['角岡','玉木','蔦澤','池田','佐々木','木下','増渕','額賀'];
   saveMembers();
 }
 
