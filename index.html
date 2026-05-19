@@ -29345,13 +29345,19 @@ function renderReport(){
   const picks = REPORT_PICKS[currentWeek]||[];
   const el = document.getElementById('reportWrap');
   if(!el) return;
+  const hasEditing = picks.some(pk=>!pk.confirmed);
+  const allConfirmed = picks.length>0 && picks.every(pk=>pk.confirmed);
   el.innerHTML = `
     <div class="rp-week-sel">
       <label>対象週:</label>
       <select onchange="currentWeek=this.value;renderReport()">
         ${WEEKS.map(w=>`<option value="${w}"${w===currentWeek?' selected':''}>${weekLabel(w)}</option>`).join('')}
       </select>
-      <button class="btn sm primary" onclick="generateWord()">📝 Word生成（AI英訳）</button>
+      ${picks.length>0 && hasEditing
+        ? `<button class="btn sm primary" onclick="confirmAllPicks()" style="background:var(--pos);border-color:var(--pos)">💾 保存（編集を確定）</button>`
+        : ''
+      }
+      <button class="btn sm primary" onclick="generateWord()">📝 Word出力（.docx）</button>
     </div>
     ${picks.length===0
       ? '<div style="font-size:11px;color:var(--warn);padding:12px 0">プロジェクト詳細の「＋ Reportに追加」ボタンで案件を追加してください</div>'
@@ -29365,6 +29371,32 @@ function rpCard(pk, idx){
   const p = PROJECTS.find(x=>x.id===pk.projectId);
   const log = getLog(pk.projectId, currentWeek)||{};
   const hlType = pk.hlType||'';
+  const confirmed = !!pk.confirmed;
+
+  if(confirmed){
+    // ── 確定済み（読み取り専用）表示 ──
+    const hlLabel = hlType==='pos'?'☆ Positive':hlType==='neg'?'★ Concern':'— 分類なし';
+    const hlColor = hlType==='pos'?'var(--pos)':hlType==='neg'?'var(--neg)':'var(--muted)';
+    return `<div class="rp-card${hlType==='neg'?' neg':''}" id="rp-card-${idx}"
+        style="opacity:0.92;position:relative">
+      <div style="position:absolute;top:8px;right:10px;display:flex;gap:6px;align-items:center">
+        <span style="font-size:9px;background:var(--pos-bg);color:var(--pos);padding:2px 7px;border-radius:8px;font-weight:600">✓ 出力済</span>
+        <button class="btn sm" style="font-size:10px;padding:2px 8px"
+          onclick="unconfirmPick(${idx})">✏️ 再編集</button>
+        <button class="btn sm" style="color:var(--neg);font-size:10px;padding:2px 8px"
+          onclick="removePick(${idx})">削除</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-right:180px">
+        <span style="font-size:10px;color:${hlColor}">${hlLabel}</span>
+        <strong style="font-size:12px">${p?.name||'—'}</strong>
+        <span style="font-size:10px;color:var(--muted)">${p?.cat||''}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text);background:var(--bg);padding:8px 10px;border-radius:var(--rad);white-space:pre-wrap;line-height:1.65;border:1px solid var(--border)">${esc(stripHtml(pk.editedText||log.progress||''))}</div>
+      ${log.nextAction?`<div style="font-size:10px;color:var(--muted);margin-top:6px">→ 次のアクション: ${esc(stripHtml(log.nextAction))}</div>`:''}
+    </div>`;
+  }
+
+  // ── 通常（編集中）表示 ──
   return `<div class="rp-card${hlType==='neg'?' neg':''}" id="rp-card-${idx}">
     <div class="rp-card-title" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <select style="font-size:10px;padding:2px 6px;border:1px solid var(--border2);border-radius:3px;background:var(--bg);color:var(--text)"
@@ -29387,6 +29419,19 @@ function rpCard(pk, idx){
   </div>`;
 }
 
+function confirmAllPicks(){
+  (REPORT_PICKS[currentWeek]||[]).forEach(pk=>{ pk.confirmed = true; });
+  saveState();
+  renderReport();
+}
+
+function unconfirmPick(idx){
+  const picks = REPORT_PICKS[currentWeek]||[];
+  if(picks[idx]) picks[idx].confirmed = false;
+  saveState();
+  renderReport();
+}
+
 function updatePickText(idx, val){
   const picks = REPORT_PICKS[currentWeek]||[];
   if(picks[idx]) picks[idx].editedText = val;
@@ -29404,7 +29449,14 @@ function updatePickHL(idx, val){
 
 function removePick(idx){
   const picks = REPORT_PICKS[currentWeek]||[];
+  const removed = picks[idx];
   picks.splice(idx,1);
+  // HIGHLIGHTSからも削除（緑/赤ボーダーを消す）
+  if(removed){
+    const hls = HIGHLIGHTS[currentWeek]||[];
+    const hi = hls.findIndex(h=>h.projectId===removed.projectId);
+    if(hi>=0) hls.splice(hi,1);
+  }
   saveState();
   updateReportBadge();
   renderReport();
