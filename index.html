@@ -226,7 +226,7 @@ body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif;backgroun
 <body>
 
 <!-- ===== LOGIN SCREEN ===== -->
-<div id="login-screen">
+<div id="login-screen" style="display:none">
   <div class="login-wrap">
     <div class="login-title">
       <h1>プロジェクト進捗管理</h1>
@@ -28613,6 +28613,7 @@ function checkAdminSession(callback){
 function doLogin(admin){
   if(!loginSelected) return;
   myOwner = loginSelected;
+  try{ localStorage.setItem('wr_myowner', myOwner); }catch(e){}
   isAdmin = admin;
   if(admin){
     const session = {name: loginSelected, expiresAt: Date.now() + 30*60*1000};
@@ -29790,10 +29791,11 @@ function initApp(isFirebaseData){
   }
   // localStorageにログイン情報が残っていればログイン画面をスキップ
   if(myOwner && MEMBERS.includes(myOwner)){
-    document.getElementById('login-screen').style.display = 'none';
+    // localStorage復元：ログイン画面スキップ
     updateUserBadge();
     applyAdminUI();
   } else {
+    document.getElementById('login-screen').style.display = 'flex';
     initLoginScreen();
   }
 }
