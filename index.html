@@ -198,9 +198,54 @@ body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif;backgroun
 /* Gen box */
 .gen-box{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rad2);padding:14px;margin-top:14px}
 .gen-box h4{font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px}
+
+/* ===== LOGIN ===== */
+#login-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem}
+.login-wrap{width:100%;max-width:360px}
+.login-title{text-align:center;margin-bottom:1.5rem}
+.login-title h1{font-size:18px;font-weight:600;color:var(--text);margin:0 0 4px}
+.login-title p{font-size:12px;color:var(--muted);margin:0}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rad2);padding:1.25rem;margin-bottom:10px}
+.login-label{font-size:12px;color:var(--muted);margin-bottom:10px}
+.member-row{padding:9px 12px;border:1px solid var(--border);border-radius:var(--rad);cursor:pointer;display:flex;align-items:center;gap:10px;background:var(--bg);margin-bottom:6px;transition:.1s}
+.member-row:hover{background:var(--accent-light)}
+.member-row.selected{border:2px solid var(--accent);background:var(--accent-light)}
+.member-avatar{width:32px;height:32px;border-radius:50%;background:var(--accent-light);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--accent);flex-shrink:0;letter-spacing:0.5px}
+.member-row.selected .member-avatar{background:var(--accent);color:#fff}
+.member-name{font-size:13px;color:var(--text)}
+.member-row.selected .member-name{color:var(--accent);font-weight:500}
+.login-admin-row{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rad);padding:10px 12px;display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.login-admin-status{font-size:11px;color:var(--muted);margin-top:6px;text-align:center}
+
+/* 右上ユーザー表示 */
+#current-user-badge{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+#current-user-badge .user-avatar{width:24px;height:24px;border-radius:50%;background:var(--accent-light);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--accent)}
+#current-user-badge.admin-mode .user-avatar{background:var(--accent);color:#fff}
 </style>
 </head>
 <body>
+
+<!-- ===== LOGIN SCREEN ===== -->
+<div id="login-screen">
+  <div class="login-wrap">
+    <div class="login-title">
+      <h1>プロジェクト進捗管理</h1>
+      <p id="login-dept-name">アジア事業推進部</p>
+    </div>
+    <div class="login-card">
+      <div class="login-label">メンバーを選択</div>
+      <div id="login-member-list"></div>
+      <button id="btn-login-enter" class="btn primary" style="width:100%;margin-top:10px;opacity:0.4;cursor:not-allowed" disabled onclick="doLogin(false)">入室する</button>
+    </div>
+    <div class="login-card">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:12px;font-weight:500;color:var(--text)">⚙️ 管理者として入室</div>
+        <button id="btn-login-admin" class="btn sm" style="opacity:0.4;cursor:not-allowed" disabled onclick="doLogin(true)">入室する</button>
+      </div>
+      <div id="admin-in-use-msg" class="login-admin-status"></div>
+    </div>
+  </div>
+</div>
 <div class="layout">
 
 <!-- ===== SIDEBAR ===== -->
@@ -209,6 +254,11 @@ body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif;backgroun
     <div>
       <h1>プロジェクト進捗管理</h1>
       <p id="sb-dept-full">アジア事業推進部</p>
+      <div id="current-user-badge" style="margin-top:6px">
+        <div class="user-avatar" id="user-avatar-icon"></div>
+        <span id="user-name-label"></span>
+        <button class="btn ghost" style="font-size:10px;padding:2px 6px;margin-left:4px" onclick="doLogout()">退室</button>
+      </div>
     </div>
     <button class="btn ghost" style="font-size:11px;padding:3px 7px;margin-top:2px" title="設定" onclick="openDeptSettings()">⚙️</button>
   </div>
@@ -235,7 +285,7 @@ body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif;backgroun
     <div id="sbCatList"></div>
   </div>
   <div class="sb-footer">
-    <button class="btn" style="width:100%;font-size:10px" onclick="openAddProject()">＋ プロジェクト追加</button>
+    <button class="btn admin-only" style="width:100%;font-size:10px;display:none" onclick="openAddProject()">＋ プロジェクト追加</button>
   </div>
 </div>
 
@@ -285,8 +335,8 @@ body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif;backgroun
     <div class="topbar">
       <button class="btn ghost" onclick="showList()">← 一覧</button>
       <span class="topbar-title" id="detail-topbar-title"></span>
-      <button class="btn sm" id="btn-toggle-status" onclick="toggleProjectStatus()"></button>
-      <button class="btn sm" style="color:var(--neg);border-color:var(--neg-border)" onclick="deleteProject()">🗑 削除</button>
+      <button class="btn sm admin-only" id="btn-toggle-status" onclick="toggleProjectStatus()" style="display:none"></button>
+      <button class="btn sm admin-only" style="color:var(--neg);border-color:var(--neg-border);display:none" onclick="deleteProject()">🗑 削除</button>
     </div>
     <div class="detail-wrap">
       <!-- Left -->
@@ -28395,14 +28445,26 @@ function filterByCat(cat, el){
 // ⑤ MY VIEW（メンバーリスト+タブ方式）
 // ────────────────────────────────────────────────────────
 let myOwner = '';
-let MEMBERS = []; // 表示メンバーリスト（編集可能）
+let isAdmin = false;
+const FB_ADMIN = 'https://weekly-report-sub-default-rtdb.asia-southeast1.firebasedatabase.app/admin_session';
+
+// イニシャルマスター（メンバー管理と連動）
+const MEMBER_INITIALS = {
+  '角岡':'SK','玉木':'NT','蔦澤':'GT','池田':'TI',
+  '佐々木':'TS','木下':'KK','増渕':'MM','額賀':'HN'
+};
+
+function getMemberInitial(name){
+  return MEMBER_INITIALS[name] || name.substring(0,2);
+}
+
+let MEMBERS = [];
 
 function loadMembers(){
   try{
     const s = localStorage.getItem('wr_members');
     if(s){ MEMBERS = JSON.parse(s); return; }
   }catch(e){}
-  // 初回：担当者一覧から自動構築
   const EXCLUDE = ['貫渡'];
   MEMBERS = [...new Set(
     PROJECTS.filter(p=>p.status!=='closed')
@@ -28414,6 +28476,114 @@ function loadMembers(){
 
 function saveMembers(){
   try{ localStorage.setItem('wr_members', JSON.stringify(MEMBERS)); }catch(e){}
+}
+
+// ────────────────────────────────────────────────────────
+// LOGIN
+// ────────────────────────────────────────────────────────
+let loginSelected = null;
+
+function initLoginScreen(){
+  document.getElementById('login-dept-name').textContent = DEPT_FULL;
+  checkAdminSession(adminName=>{
+    const list = document.getElementById('login-member-list');
+    list.innerHTML = '';
+    MEMBERS.forEach(name=>{
+      const initial = getMemberInitial(name);
+      const row = document.createElement('div');
+      row.className = 'member-row';
+      row.innerHTML = `<div class="member-avatar">${initial}</div><span class="member-name">${name}</span>`;
+      row.onclick = ()=>{
+        loginSelected = name;
+        list.querySelectorAll('.member-row').forEach(r=>r.classList.remove('selected'));
+        row.classList.add('selected');
+        const btnEnter = document.getElementById('btn-login-enter');
+        btnEnter.disabled = false;
+        btnEnter.style.opacity = '1';
+        btnEnter.style.cursor = 'pointer';
+        const btnAdmin = document.getElementById('btn-login-admin');
+        if(adminName){
+          btnAdmin.disabled = true;
+          btnAdmin.style.opacity = '0.4';
+          btnAdmin.style.cursor = 'not-allowed';
+          document.getElementById('admin-in-use-msg').textContent = `現在 ${adminName} さんが使用中です`;
+        } else {
+          btnAdmin.disabled = false;
+          btnAdmin.style.opacity = '1';
+          btnAdmin.style.cursor = 'pointer';
+          document.getElementById('admin-in-use-msg').textContent = '';
+        }
+      };
+      list.appendChild(row);
+    });
+  });
+}
+
+function checkAdminSession(callback){
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', `${FB_ADMIN}.json`, true);
+  xhr.onload = function(){
+    try{
+      const data = JSON.parse(xhr.responseText);
+      if(data && data.name && data.expiresAt > Date.now()) callback(data.name);
+      else callback(null);
+    }catch(e){ callback(null); }
+  };
+  xhr.onerror = ()=>callback(null);
+  xhr.send();
+}
+
+function doLogin(admin){
+  if(!loginSelected) return;
+  myOwner = loginSelected;
+  isAdmin = admin;
+  if(admin){
+    const session = {name: loginSelected, expiresAt: Date.now() + 30*60*1000};
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `${FB_ADMIN}.json`, true);
+    xhr.setRequestHeader('Content-Type','application/json');
+    xhr.send(JSON.stringify(session));
+    setTimeout(()=>releaseAdminSession(), 30*60*1000);
+    fbDB.writeLog('admin_login', `name:${loginSelected}`);
+  } else {
+    fbDB.writeLog('login', `name:${loginSelected}`);
+  }
+  document.getElementById('login-screen').style.display = 'none';
+  updateUserBadge();
+  applyAdminUI();
+}
+
+function doLogout(){
+  if(isAdmin) releaseAdminSession();
+  fbDB.writeLog('logout', `name:${myOwner} admin:${isAdmin}`);
+  myOwner = '';
+  isAdmin = false;
+  loginSelected = null;
+  document.getElementById('login-screen').style.display = 'flex';
+  initLoginScreen();
+}
+
+function releaseAdminSession(){
+  const xhr = new XMLHttpRequest();
+  xhr.open('DELETE', `${FB_ADMIN}.json`, true);
+  xhr.send();
+}
+
+function updateUserBadge(){
+  const avatar = document.getElementById('user-avatar-icon');
+  const label = document.getElementById('user-name-label');
+  const badge = document.getElementById('current-user-badge');
+  if(!avatar) return;
+  avatar.textContent = getMemberInitial(myOwner);
+  label.textContent = myOwner + (isAdmin?' (管理者)':'');
+  if(isAdmin) badge.classList.add('admin-mode');
+  else badge.classList.remove('admin-mode');
+}
+
+function applyAdminUI(){
+  document.querySelectorAll('.admin-only').forEach(el=>{
+    el.style.display = isAdmin ? '' : 'none';
+  });
 }
 
 function showMyView(){
@@ -29446,6 +29616,17 @@ function closeOverlay(e){
 // ────────────────────────────────────────────────────────
 // BOOT（Firebase REST API読み込み）
 // ────────────────────────────────────────────────────────
+// ブラウザを閉じる時の処理
+window.addEventListener('beforeunload', function(e){
+  if(isAdmin){
+    releaseAdminSession();
+    // 確認ダイアログを表示（管理者の場合のみ）
+    e.preventDefault();
+    e.returnValue = '管理者セッションが解除されます。退室しますか？';
+    return e.returnValue;
+  }
+});
+
 // ────────────────────────────────────────────────────────
 // BOOT（DOMContentLoaded後に実行）
 // ────────────────────────────────────────────────────────
@@ -29460,7 +29641,6 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 
 function initApp(isFirebaseData){
-  // currentWeekを常に最新週に設定
   currentWeek = WEEKS[0];
   buildSidebar();
   showList();
@@ -29470,6 +29650,8 @@ function initApp(isFirebaseData){
   if(!isFirebaseData && PROJECTS.length > 0){
     saveState();
   }
+  // ログイン画面を表示
+  initLoginScreen();
 }
 </script>
 </body>
