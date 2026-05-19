@@ -257,7 +257,7 @@ body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif;backgroun
       <div id="current-user-badge" style="margin-top:6px">
         <div class="user-avatar" id="user-avatar-icon"></div>
         <span id="user-name-label"></span>
-        <button class="btn ghost" style="font-size:10px;padding:2px 6px;margin-left:4px" onclick="doLogout()">退室</button>
+        <button class="btn" style="font-size:10px;padding:3px 10px;margin-left:6px;background:var(--neg-bg);color:var(--neg);border-color:var(--neg-border);border-radius:var(--rad);font-weight:500" onclick="doLogout()">退室する</button>
       </div>
     </div>
     <button class="btn ghost admin-only" style="font-size:11px;padding:3px 7px;margin-top:2px;display:none" title="設定" onclick="openDeptSettings()">⚙️</button>
@@ -28119,9 +28119,12 @@ function saveState(){
   if(_firebaseSaveTimer) clearTimeout(_firebaseSaveTimer);
   _firebaseSaveTimer = setTimeout(()=>{
     // 設定系は全体保存（競合リスクなし）
+    const ts = Date.now();
+    window._lastTs = String(ts);
     fbDB.patch('', {
       deptFull: DEPT_FULL,
-      categories: CATEGORIES
+      categories: CATEGORIES,
+      _ts: ts
     });
     // projectsは個別保存（競合防止）
     PROJECTS.forEach(p=>{
@@ -28552,8 +28555,10 @@ let loginSelected = null;
 
 function initLoginScreen(){
   document.getElementById('login-dept-name').textContent = DEPT_FULL;
+  // ローディング表示
+  const list = document.getElementById('login-member-list');
+  list.innerHTML = '<div style="font-size:11px;color:var(--hint);padding:8px 4px">読み込み中…</div>';
   checkAdminSession(adminName=>{
-    const list = document.getElementById('login-member-list');
     list.innerHTML = '';
     MEMBERS.forEach(name=>{
       const initial = getMemberInitial(name);
@@ -28626,6 +28631,7 @@ function doLogin(admin){
 }
 
 function doLogout(){
+  try{ localStorage.removeItem('wr_myowner'); }catch(e){}
   if(isAdmin){
     releaseAdminSession(()=>{
       fbDB.writeLog('logout', `name:${myOwner} admin:${isAdmin}`);
@@ -29721,10 +29727,52 @@ document.addEventListener('DOMContentLoaded', function(){
     const isFirebaseData = !err && data && data.projects && data.projects.length > 0;
     applyStoredData(isFirebaseData ? data : loadState());
     initApp(isFirebaseData);
-    // アクセスログ：起動時に記録
     fbDB.writeLog('boot', `firebase:${isFirebaseData} projects:${PROJECTS.length}`);
+    // ログイン後にバックグラウンドポーリング開始
+    startPolling();
   });
 });
+
+// ────────────────────────────────────────────────────────
+// バックグラウンドポーリング（30秒ごとにFirebaseを確認）
+// ────────────────────────────────────────────────────────
+let _pollingTimer = null;
+function startPolling(){
+  if(_pollingTimer) return;
+  _pollingTimer = setInterval(function(){
+    // 未ログイン中・モーダル開いてるときはスキップ
+    if(!myOwner) return;
+    if(document.getElementById('overlay')?.style.display === 'flex') return;
+    fbDB.get(function(err, data){
+      if(err || !data) return;
+      // プロジェクト数・最終更新タイムスタンプで差分を簡易チェック
+      const remoteProjects = data.projects ? Object.values(data.projects) : [];
+      const remoteHash = remoteProjects.length + '|' + (data._ts||'');
+      const localHash  = PROJECTS.length + '|' + (window._lastTs||'');
+      if(remoteHash === localHash) return; // 差分なしはスキップ
+      window._lastTs = data._ts||'';
+      // 差分あり：データ更新して再描画（編集中のdetailは閉じない）
+      applyStoredData(data);
+      renderList();
+      updateReportBadge();
+      showToast('データを更新しました');
+    });
+  }, 30000);
+}
+
+function showToast(msg){
+  let t = document.getElementById('_toast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = '_toast';
+    t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:11px;padding:7px 16px;border-radius:20px;z-index:9998;opacity:0;transition:opacity .3s;pointer-events:none';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>{ t.style.opacity='0'; }, 2500);
+}
 
 function initApp(isFirebaseData){
   currentWeek = WEEKS[0];
@@ -29736,12 +29784,18 @@ function initApp(isFirebaseData){
   if(!isFirebaseData && PROJECTS.length > 0){
     saveState();
   }
-  // MEMBERSが空の場合はデフォルトを設定してからログイン画面表示
   if(!MEMBERS.length){
     MEMBERS = ['角岡','玉木','蔦澤','池田','佐々木','木下','増渕','額賀'];
     saveMembers();
   }
-  initLoginScreen();
+  // localStorageにログイン情報が残っていればログイン画面をスキップ
+  if(myOwner && MEMBERS.includes(myOwner)){
+    document.getElementById('login-screen').style.display = 'none';
+    updateUserBadge();
+    applyAdminUI();
+  } else {
+    initLoginScreen();
+  }
 }
 </script>
 </body>
