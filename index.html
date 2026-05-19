@@ -28626,18 +28626,26 @@ function doLogin(admin){
 }
 
 function doLogout(){
-  if(isAdmin) releaseAdminSession();
-  fbDB.writeLog('logout', `name:${myOwner} admin:${isAdmin}`);
-  myOwner = '';
-  isAdmin = false;
-  loginSelected = null;
-  document.getElementById('login-screen').style.display = 'flex';
-  initLoginScreen();
+  if(isAdmin){
+    releaseAdminSession(()=>{
+      fbDB.writeLog('logout', `name:${myOwner} admin:${isAdmin}`);
+      myOwner = ''; isAdmin = false; loginSelected = null;
+      document.getElementById('login-screen').style.display = 'flex';
+      initLoginScreen();
+    });
+  } else {
+    fbDB.writeLog('logout', `name:${myOwner} admin:${isAdmin}`);
+    myOwner = ''; isAdmin = false; loginSelected = null;
+    document.getElementById('login-screen').style.display = 'flex';
+    initLoginScreen();
+  }
 }
 
-function releaseAdminSession(){
+function releaseAdminSession(callback){
   const xhr = new XMLHttpRequest();
   xhr.open('DELETE', `${FB_ADMIN}.json`, true);
+  xhr.onload = ()=>{ if(callback) callback(); };
+  xhr.onerror = ()=>{ if(callback) callback(); };
   xhr.send();
 }
 
