@@ -28882,13 +28882,13 @@ function renderProjectCard(p){
   if(p.status==='closed') cls+=' closed';
   if(hl?.type==='pos') cls+=' has-hl-pos';
   if(hl?.type==='neg') cls+=' has-hl-neg';
-  const dotCls = p.status==='closed'?'dot-closed':log?.progress?'dot-ok':'dot-warn';
+  const dotCls = p.status==='closed'?'dot-closed':(log?.progress && stripHtml(log.progress).trim())?'dot-ok':'dot-warn';
   const ownerParts = splitOwners(p.owner);
   // 入力状況ラベル
   let inputBadge = '';
   if(p.status==='closed'){
     inputBadge = '';
-  } else if(log?.progress){
+  } else if(log?.progress && stripHtml(log.progress).trim()){
     inputBadge = '<span class="tag" style="background:var(--pos-bg);color:var(--pos);font-size:9px">入力済</span>';
   } else {
     inputBadge = '<span class="tag" style="background:var(--warn-bg);color:var(--warn);font-size:9px">未入力</span>';
@@ -29249,7 +29249,9 @@ function enableSaveBtn(){
 
 function saveLog(pid){
   const progressEl = document.getElementById('inp-progress');
-  const progress = progressEl ? (progressEl.value !== undefined ? progressEl.value.trim() : progressEl.innerHTML.trim()) : '';
+  const rawProgress = progressEl ? (progressEl.value !== undefined ? progressEl.value.trim() : progressEl.innerHTML.trim()) : '';
+  // リッチエディタの<br>等だけの場合は空扱い
+  const progress = stripHtml(rawProgress).trim() ? rawProgress : '';
   const nextAction = document.getElementById('inp-next').value.trim();
   const existing = getLog(pid, currentWeek);
   const hlType = existing?.hlType||'';
