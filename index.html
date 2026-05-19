@@ -200,7 +200,7 @@ body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif;backgroun
 .gen-box h4{font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px}
 
 /* ===== LOGIN ===== */
-#login-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem}
+#login-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:1.5rem 1rem;overflow-y:auto}
 .login-wrap{width:100%;max-width:360px}
 .login-title{text-align:center;margin-bottom:1.5rem}
 .login-title h1{font-size:18px;font-weight:600;color:var(--text);margin:0 0 4px}
@@ -260,7 +260,7 @@ body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif;backgroun
         <button class="btn ghost" style="font-size:10px;padding:2px 6px;margin-left:4px" onclick="doLogout()">退室</button>
       </div>
     </div>
-    <button class="btn ghost" style="font-size:11px;padding:3px 7px;margin-top:2px" title="設定" onclick="openDeptSettings()">⚙️</button>
+    <button class="btn ghost admin-only" style="font-size:11px;padding:3px 7px;margin-top:2px;display:none" title="設定" onclick="openDeptSettings()">⚙️</button>
   </div>
   <div class="sb-search">
     <input id="sbSearch" placeholder="プロジェクトを検索…" oninput="filterSidebar(this.value)">
@@ -28151,6 +28151,7 @@ function buildCatOptions(selectedVal){
 }
 
 function openDeptSettings(){
+  if(!isAdmin){ alert('管理者としてログインしてください'); return; }
   const body = document.getElementById('modalBody');
   body.innerHTML = `
     <h3>⚙️ 設定</h3>
@@ -28197,11 +28198,11 @@ function renderMemberEditList(){
   el.innerHTML = MEMBERS.map((m,i)=>`
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
       <input style="width:44px;font-size:11px;padding:4px 6px;border:1px solid var(--border2);border-radius:var(--rad);background:var(--surface);color:var(--text);text-transform:uppercase"
-        value="${MEMBER_INITIALS[m]||''}" placeholder="SK" id="initial-edit-${i}" onchange="updateMemberInitial('${m}',this.value)">
+        value="${MEMBER_INITIALS[m]||''}" placeholder="SK" onchange="updateMemberInitial('${m}',this.value)">
       <span style="flex:1;font-size:12px;color:var(--text)">${m}</span>
       <button class="btn sm ghost" style="color:var(--neg)" onclick="removeMemberFromSettings(${i})" title="削除">✕</button>
-      ${i>0?`<button class="btn sm ghost" onclick="moveMemberSettings(${i},-1)" title="上へ">↑</button>`:'<span style="width:28px"></span>'}
-      ${i<MEMBERS.length-1?`<button class="btn sm ghost" onclick="moveMemberSettings(${i},1)" title="下へ">↓</button>`:'<span style="width:28px"></span>'}
+      ${i>0?`<button class="btn sm ghost" onclick="moveMemberSettings(${i},-1)">↑</button>`:'<span style="width:28px"></span>'}
+      ${i<MEMBERS.length-1?`<button class="btn sm ghost" onclick="moveMemberSettings(${i},1)">↓</button>`:'<span style="width:28px"></span>'}
     </div>`).join('');
 }
 
@@ -28734,52 +28735,6 @@ function openMemberSettings(){
   document.getElementById('overlay').style.display='flex';
 }
 
-function renderMemberEditList(){
-  const el = document.getElementById('member-list-edit');
-  if(!el) return;
-  el.innerHTML = MEMBERS.map((m,i)=>`
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-      <input style="flex:1;font-size:11px;padding:4px 8px;border:1px solid var(--border2);border-radius:var(--rad);background:var(--surface);color:var(--text)"
-        value="${m}" id="mem-edit-${i}" onchange="updateMember(${i},this.value)">
-      <button class="btn sm ghost" style="color:var(--neg)" onclick="removeMember(${i})" title="削除">✕</button>
-      ${i>0?`<button class="btn sm ghost" onclick="moveMember(${i},-1)">↑</button>`:'<span style="width:28px"></span>'}
-      ${i<MEMBERS.length-1?`<button class="btn sm ghost" onclick="moveMember(${i},1)">↓</button>`:'<span style="width:28px"></span>'}
-    </div>`).join('');
-}
-
-function addMember(){
-  const inp = document.getElementById('new-member-input');
-  const val = inp.value.trim();
-  if(!val) return;
-  if(MEMBERS.includes(val)){ alert('同名のメンバーが既に存在します'); return; }
-  MEMBERS.push(val);
-  inp.value='';
-  saveMembers();
-  renderMemberEditList();
-}
-
-function updateMember(i, val){
-  if(!val.trim()) return;
-  MEMBERS[i] = val.trim();
-  saveMembers();
-  renderMemberEditList();
-}
-
-function removeMember(i){
-  if(!confirm(`「${MEMBERS[i]}」をメンバーから削除しますか？\n（案件データには影響しません）`)) return;
-  if(myOwner===MEMBERS[i]) myOwner = '';
-  MEMBERS.splice(i,1);
-  saveMembers();
-  renderMemberEditList();
-}
-
-function moveMember(i, dir){
-  const j = i+dir;
-  if(j<0||j>=MEMBERS.length) return;
-  [MEMBERS[i],MEMBERS[j]]=[MEMBERS[j],MEMBERS[i]];
-  saveMembers();
-  renderMemberEditList();
-}
 
 function filterSidebar(q){
   // カテゴリfilterをリセットしてリスト絞り込みのみ
@@ -29721,7 +29676,11 @@ function initApp(isFirebaseData){
   if(!isFirebaseData && PROJECTS.length > 0){
     saveState();
   }
-  // ログイン画面を表示
+  // MEMBERSが空の場合はデフォルトを設定してからログイン画面表示
+  if(!MEMBERS.length){
+    MEMBERS = ['角岡','玉木','蔦澤','池田','佐々木','木下','増渕','額賀'];
+    saveMembers();
+  }
   initLoginScreen();
 }
 </script>
