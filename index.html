@@ -28015,17 +28015,38 @@ const fbDB = {
     xhr.onerror = function(){ console.warn('Firebase put error:', path); };
     xhr.send(JSON.stringify(data));
   },
-  // アクセスログ記録
+  // アクセスログ記録（30日以上古いログを自動削除）
   writeLog(action, detail){
     const ts = Date.now();
-    const ua = navigator.userAgent.substring(0, 80);
+    const ua = navigator.userAgent.substring(0, 100);
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', `${FB_LOG}/${ts}.json`, true);
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.send(JSON.stringify({
-      ts, action, detail,
-      ua, time: new Date(ts).toISOString()
+      ts, action, detail, ua,
+      time: new Date(ts).toISOString(),
+      projectCount: PROJECTS ? PROJECTS.length : 0
     }));
+    // 30日以上古いログを削除
+    this.cleanOldLogs();
+  },
+  cleanOldLogs(){
+    const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `${FB_LOG}.json?orderBy="ts"&endAt=${cutoff}`, true);
+    xhr.onload = function(){
+      if(xhr.status !== 200) return;
+      try{
+        const old = JSON.parse(xhr.responseText);
+        if(!old) return;
+        Object.keys(old).forEach(key=>{
+          const d = new XMLHttpRequest();
+          d.open('DELETE', `${FB_LOG}/${key}.json`, true);
+          d.send();
+        });
+      }catch(e){}
+    };
+    xhr.send();
   }
 };
 
@@ -28820,14 +28841,16 @@ function renderDetailLeft(p){
           <button class="rtb" title="標準" onclick="rfmt('fontSize','3')" style="font-size:11px">中</button>
           <button class="rtb" title="大" onclick="rfmt('fontSize','4')" style="font-size:13px">大</button>
         </div>
-        <div class="rich-editor" id="inp-progress" contenteditable="true">${log.progress||''}</div>
+        <div class="rich-editor" id="inp-progress" contenteditable="true"
+          onfocus="fbDB.writeLog('edit_start', 'pid:${p.id} week:${currentWeek}')"
+          oninput="enableSaveBtn()">${log.progress||''}</div>
       </div>
       <div class="input-row">
         <label>次のアクション</label>
-        <textarea id="inp-next" placeholder="来週やること・フォローアップ項目…" style="min-height:52px">${esc(log.nextAction)}</textarea>
+        <textarea id="inp-next" placeholder="来週やること・フォローアップ項目…" style="min-height:52px" oninput="enableSaveBtn()">${esc(log.nextAction)}</textarea>
       </div>
       <div class="input-actions">
-        <button class="btn sm primary" onclick="saveLog(${p.id})">保存</button>
+        <button class="btn sm primary" id="save-btn" onclick="saveLog(${p.id})" disabled style="opacity:0.4;cursor:not-allowed">保存</button>
         <div class="hl-toggle">
           <button class="hl-btn pos${hlType==='pos'?' on':''}" id="hl-pos-btn" onclick="toggleHL(${p.id},'pos')">☆ ポジ</button>
           <button class="hl-btn neg${hlType==='neg'?' on':''}" id="hl-neg-btn" onclick="toggleHL(${p.id},'neg')">★ ネガ</button>
@@ -28989,14 +29012,34 @@ function rfmt(cmd, val){
   document.getElementById('inp-progress').focus();
   document.execCommand(cmd, false, val||null);
 }
+function enableSaveBtn(){
+  const btn = document.getElementById('save-btn');
+  if(!btn) return;
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  btn.style.cursor = 'pointer';
+}
+
 function saveLog(pid){
   const progressEl = document.getElementById('inp-progress');
   const progress = progressEl ? (progressEl.value !== undefined ? progressEl.value.trim() : progressEl.innerHTML.trim()) : '';
   const nextAction = document.getElementById('inp-next').value.trim();
   const existing = getLog(pid, currentWeek);
   const hlType = existing?.hlType||'';
+  const charsBefore = (existing?.progress||'').length;
   LOGS[logKey(pid, currentWeek)] = {progress, nextAction, hlType};
+  // アクセスログ：上書き前後の文字数も記録
+  fbDB.writeLog('edit_save', `pid:${pid} week:${currentWeek} chars_before:${charsBefore} chars_after:${progress.length}`);
   saveState();
+  // 保存ボタンをグレーに戻す＋完了表示
+  const btn = document.getElementById('save-btn');
+  if(btn){
+    btn.disabled = true;
+    btn.style.opacity = '0.4';
+    btn.style.cursor = 'not-allowed';
+    btn.textContent = '✓ 保存しました';
+    setTimeout(()=>{ btn.textContent = '保存'; }, 2000);
+  }
   renderDetail();
 }
 
@@ -29034,11 +29077,9 @@ function toggleHL(pid, type){
 function deleteProject(){
   const p = PROJECTS.find(x=>x.id===currentProjectId);
   if(!p) return;
-  // 1段階目
   if(!confirm(`「${p.name}」を完全に削除しますか？\n\nこの操作はクローズとは異なり、元に戻せません。`)) return;
-  // 2段階目（誤操作防止）
   if(!confirm(`⚠️ 本当に削除しますか？\n「${p.name}」のすべての進捗データも削除されます。`)) return;
-  // PROJECTS・LOGS・HIGHLIGHTS・REPORT_PICKSから削除
+  fbDB.writeLog('project_delete', `pid:${p.id} name:${p.name}`);
   const idx = PROJECTS.findIndex(x=>x.id===currentProjectId);
   if(idx>=0) PROJECTS.splice(idx,1);
   Object.keys(LOGS).filter(k=>k.startsWith(currentProjectId+'_')).forEach(k=>delete LOGS[k]);
@@ -29060,15 +29101,15 @@ function toggleProjectStatus(){
   const p = PROJECTS.find(x=>x.id===currentProjectId);
   if(!p) return;
   if(p.status==='closed'){
-    // 復活
     p.status='active';
+    fbDB.writeLog('project_restore', `pid:${p.id} name:${p.name}`);
     saveState();
     buildSidebar();
     renderDetail();
   } else {
-    // 終了確認
     if(!confirm(`「${p.name}」をクローズしますか？\n\n一覧からは非表示になりますが、サイドバーの「終了案件」から確認・復活できます。`)) return;
     p.status='closed';
+    fbDB.writeLog('project_close', `pid:${p.id} name:${p.name}`);
     saveState();
     buildSidebar();
     showList();
