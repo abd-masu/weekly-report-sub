@@ -28068,19 +28068,25 @@ function saveState(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify({projects:PROJECTS, logs:LOGS, highlights:HIGHLIGHTS, reportPicks:REPORT_PICKS, deptFull:DEPT_FULL, categories:CATEGORIES})); }catch(e){}
   if(_firebaseSaveTimer) clearTimeout(_firebaseSaveTimer);
   _firebaseSaveTimer = setTimeout(()=>{
-    // projects・設定系は全体保存
+    // 設定系は全体保存（競合リスクなし）
     fbDB.patch('', {
-      projects: PROJECTS,
-      reportPicks: REPORT_PICKS,
       deptFull: DEPT_FULL,
       categories: CATEGORIES
     });
-    // logs・highlightsは個別パスで部分更新（競合防止）
+    // projectsは個別保存（競合防止）
+    PROJECTS.forEach(p=>{
+      fbDB.put(`projects/${p.id}`, p);
+    });
+    // logs・highlightsは個別保存（競合防止）
     Object.entries(LOGS).forEach(([key, val])=>{
       fbDB.put(`logs/${key}`, val);
     });
     Object.entries(HIGHLIGHTS).forEach(([week, hls])=>{
       fbDB.put(`highlights/${week}`, hls);
+    });
+    // REPORT_PICKSは週単位で個別保存（競合防止）
+    Object.entries(REPORT_PICKS).forEach(([week, picks])=>{
+      fbDB.put(`reportPicks/${week}`, picks);
     });
     // アクセスログ記録
     fbDB.writeLog('saveState', `projects:${PROJECTS.length} logs:${Object.keys(LOGS).length}`);
@@ -28190,19 +28196,29 @@ let currentWeek = WEEKS[0];
 let currentProjectId = null;
 
 function applyStoredData(stored){
-  if(stored && stored.projects && stored.projects.length > 0){
-    PROJECTS = stored.projects;
-    LOGS = stored.logs || {};
-    HIGHLIGHTS = stored.highlights || {};
-    REPORT_PICKS = stored.reportPicks || {};
-    if(stored.deptFull) DEPT_FULL = stored.deptFull;
-    if(stored.categories && stored.categories.length) CATEGORIES = stored.categories;
-  } else {
-    PROJECTS = JSON.parse(JSON.stringify(PROJECTS_DEFAULT));
-    LOGS = JSON.parse(JSON.stringify(LOGS_DEFAULT));
-    HIGHLIGHTS = {};
-    saveState();
+  if(stored){
+    // projectsが配列（旧形式）またはオブジェクト（新形式）の両方に対応
+    if(Array.isArray(stored.projects) && stored.projects.length > 0){
+      PROJECTS = stored.projects;
+    } else if(stored.projects && typeof stored.projects === 'object' && !Array.isArray(stored.projects)){
+      PROJECTS = Object.values(stored.projects).filter(Boolean);
+      PROJECTS.sort((a,b)=>a.id-b.id);
+    }
+    if(PROJECTS.length > 0){
+      LOGS = stored.logs || {};
+      HIGHLIGHTS = stored.highlights || {};
+      // reportPicksも新旧両形式に対応
+      REPORT_PICKS = stored.reportPicks || {};
+      if(stored.deptFull) DEPT_FULL = stored.deptFull;
+      if(stored.categories && stored.categories.length) CATEGORIES = stored.categories;
+      return;
+    }
   }
+  // データなし（初回）：デフォルトデータを使用
+  PROJECTS = JSON.parse(JSON.stringify(PROJECTS_DEFAULT));
+  LOGS = JSON.parse(JSON.stringify(LOGS_DEFAULT));
+  HIGHLIGHTS = {};
+  saveState();
 }
 
 
@@ -29167,11 +29183,11 @@ function rpCard(pk, idx){
         onclick="removePick(${idx})">削除</button>
     </div>
     <div style="font-size:10px;color:var(--muted);margin-bottom:4px">元の進捗（参照用）:</div>
-    <div style="font-size:11px;color:var(--muted);background:var(--bg);padding:6px 8px;border-radius:var(--rad);margin-bottom:8px;white-space:pre-wrap;max-height:80px;overflow-y:auto">${esc((log.progress||'').substring(0,200))}${(log.progress||'').length>200?'…':''}</div>
+    <div style="font-size:11px;color:var(--muted);background:var(--bg);padding:6px 8px;border-radius:var(--rad);margin-bottom:8px;white-space:pre-wrap;max-height:80px;overflow-y:auto">${stripHtml((log.progress||'').substring(0,200))}${(log.progress||'').length>200?'…':''}</div>
     <div style="font-size:10px;color:var(--muted);margin-bottom:4px">Weekly Report掲載テキスト（自由編集）:</div>
     <textarea style="width:100%;font-size:11px;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--rad);background:var(--surface);color:var(--text);font-family:inherit;resize:vertical;min-height:80px;line-height:1.6"
-      oninput="updatePickText(${idx},this.value)">${esc(pk.editedText||log.progress||'')}</textarea>
-    ${log.nextAction?`<div style="font-size:10px;color:var(--muted);margin-top:4px">→ 次のアクション: ${esc(log.nextAction)}</div>`:''}
+      oninput="updatePickText(${idx},this.value)">${esc(stripHtml(pk.editedText||log.progress||''))}</textarea>
+    ${log.nextAction?`<div style="font-size:10px;color:var(--muted);margin-top:4px">→ 次のアクション: ${esc(stripHtml(log.nextAction))}</div>`:''}
   </div>`;
 }
 
@@ -29248,7 +29264,8 @@ async function generateWord(){
     for(const pk of picks_data){
       const p = PROJECTS.find(x=>x.id===pk.projectId);
       const log = getLog(pk.projectId, currentWeek)||{};
-      const text = pk.editedText||log.progress||'';
+      const text = stripHtml(pk.editedText||log.progress||'');
+      const nextActionText = stripHtml(log.nextAction||'');
       const hlType = pk.hlType||'';
       const icon = hlType==='pos'?'☆ ':hlType==='neg'?'★ ':'';
       const color = hlType==='pos'?'1a5c3a':hlType==='neg'?'8b1a1a':'333333';
@@ -29272,12 +29289,12 @@ async function generateWord(){
       }
 
       // 次のアクション
-      if(log.nextAction){
+      if(nextActionText){
         children.push(new Paragraph({
           spacing: { after: 100 },
           children: [
             new TextRun({ text: '→ 次のアクション: ', size: 18, color: '4a7ab5', bold: true, font: 'Yu Gothic' }),
-            new TextRun({ text: log.nextAction, size: 18, color: '4a7ab5', font: 'Yu Gothic' })
+            new TextRun({ text: nextActionText, size: 18, color: '4a7ab5', font: 'Yu Gothic' })
           ]
         }));
       }
@@ -29402,6 +29419,22 @@ function addProject(){
 // ────────────────────────────────────────────────────────
 // UTILS
 // ────────────────────────────────────────────────────────
+function stripHtml(html){
+  if(!html) return '';
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function esc(str){
   return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
