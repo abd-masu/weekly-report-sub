@@ -28164,6 +28164,16 @@ function openDeptSettings(){
         <button class="btn sm primary" onclick="saveDeptSettings()">保存</button>
       </div>
     </div>
+    <div style="border-bottom:1px solid var(--border);margin-bottom:14px;padding-bottom:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">メンバー管理</div>
+      <div id="member-edit-list" style="margin-bottom:8px"></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input id="new-member-input" style="flex:1;font-size:11px;padding:5px 8px;border:1px solid var(--border2);border-radius:var(--rad);background:var(--bg);color:var(--text)" placeholder="新しいメンバー名">
+        <input id="new-member-initial" style="width:50px;font-size:11px;padding:5px 8px;border:1px solid var(--border2);border-radius:var(--rad);background:var(--bg);color:var(--text);text-transform:uppercase" placeholder="SK">
+        <button class="btn sm primary" onclick="addMemberFromSettings()">＋ 追加</button>
+      </div>
+      <div style="font-size:10px;color:var(--hint);margin-top:6px">※ イニシャルはログイン画面のアイコンに表示されます</div>
+    </div>
     <div>
       <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">カテゴリ管理</div>
       <div id="cat-list-edit" style="margin-bottom:8px"></div>
@@ -28176,8 +28186,58 @@ function openDeptSettings(){
     <div class="modal-footer">
       <button class="btn" onclick="closeOverlay()">閉じる</button>
     </div>`;
+  renderMemberEditList();
   renderCatEditList();
   document.getElementById('overlay').style.display='flex';
+}
+
+function renderMemberEditList(){
+  const el = document.getElementById('member-edit-list');
+  if(!el) return;
+  el.innerHTML = MEMBERS.map((m,i)=>`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+      <input style="width:44px;font-size:11px;padding:4px 6px;border:1px solid var(--border2);border-radius:var(--rad);background:var(--surface);color:var(--text);text-transform:uppercase"
+        value="${MEMBER_INITIALS[m]||''}" placeholder="SK" id="initial-edit-${i}" onchange="updateMemberInitial('${m}',this.value)">
+      <span style="flex:1;font-size:12px;color:var(--text)">${m}</span>
+      <button class="btn sm ghost" style="color:var(--neg)" onclick="removeMemberFromSettings(${i})" title="削除">✕</button>
+      ${i>0?`<button class="btn sm ghost" onclick="moveMemberSettings(${i},-1)" title="上へ">↑</button>`:'<span style="width:28px"></span>'}
+      ${i<MEMBERS.length-1?`<button class="btn sm ghost" onclick="moveMemberSettings(${i},1)" title="下へ">↓</button>`:'<span style="width:28px"></span>'}
+    </div>`).join('');
+}
+
+function addMemberFromSettings(){
+  const nameInp = document.getElementById('new-member-input');
+  const initInp = document.getElementById('new-member-initial');
+  const name = nameInp.value.trim();
+  const initial = initInp.value.trim().toUpperCase();
+  if(!name) return;
+  if(MEMBERS.includes(name)){ alert('同名のメンバーが既に存在します'); return; }
+  MEMBERS.push(name);
+  if(initial) MEMBER_INITIALS[name] = initial;
+  nameInp.value='';
+  initInp.value='';
+  saveMembers();
+  renderMemberEditList();
+}
+
+function removeMemberFromSettings(i){
+  if(!confirm(`「${MEMBERS[i]}」を削除しますか？`)) return;
+  MEMBERS.splice(i,1);
+  saveMembers();
+  renderMemberEditList();
+}
+
+function moveMemberSettings(i, dir){
+  const j = i+dir;
+  if(j<0||j>=MEMBERS.length) return;
+  [MEMBERS[i],MEMBERS[j]]=[MEMBERS[j],MEMBERS[i]];
+  saveMembers();
+  renderMemberEditList();
+}
+
+function updateMemberInitial(name, val){
+  MEMBER_INITIALS[name] = val.trim().toUpperCase();
+  renderMemberEditList();
 }
 
 function renderCatEditList(){
@@ -28461,12 +28521,22 @@ function getMemberInitial(name){
 let MEMBERS = [];
 
 function loadMembers(){
+  // 固定順で設定（メンバー管理で編集した場合はlocalStorageを優先）
+  const DEFAULT_MEMBERS = ['角岡','玉木','蔦澤','池田','佐々木','木下','増渕','額賀'];
   try{
     const s = localStorage.getItem('wr_members');
-    if(s){ MEMBERS = JSON.parse(s); return; }
+    if(s){
+      const saved = JSON.parse(s);
+      // 保存済みメンバーが固定リストと一致する場合は固定順を使用
+      if(saved.length === DEFAULT_MEMBERS.length && DEFAULT_MEMBERS.every(m=>saved.includes(m))){
+        MEMBERS = DEFAULT_MEMBERS;
+      } else {
+        MEMBERS = saved;
+      }
+      return;
+    }
   }catch(e){}
-  // デフォルト順序で固定
-  MEMBERS = ['角岡','玉木','蔦澤','池田','佐々木','木下','増渕','額賀'];
+  MEMBERS = DEFAULT_MEMBERS;
   saveMembers();
 }
 
@@ -28521,8 +28591,13 @@ function checkAdminSession(callback){
   xhr.onload = function(){
     try{
       const data = JSON.parse(xhr.responseText);
-      if(data && data.name && data.expiresAt > Date.now()) callback(data.name);
-      else callback(null);
+      if(data && data.name && data.expiresAt > Date.now()){
+        callback(data.name);
+      } else {
+        // 期限切れまたは空の場合は自動削除
+        if(data) releaseAdminSession();
+        callback(null);
+      }
     }catch(e){ callback(null); }
   };
   xhr.onerror = ()=>callback(null);
