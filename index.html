@@ -28313,9 +28313,9 @@ function applyStoredData(stored){
   if(stored){
     // projectsが配列（旧形式）またはオブジェクト（新形式）の両方に対応
     if(Array.isArray(stored.projects) && stored.projects.length > 0){
-      PROJECTS = stored.projects;
+      PROJECTS = stored.projects.filter(p=>p && p.id && p.cat !== undefined && p.name);
     } else if(stored.projects && typeof stored.projects === 'object' && !Array.isArray(stored.projects)){
-      PROJECTS = Object.values(stored.projects).filter(Boolean);
+      PROJECTS = Object.values(stored.projects).filter(p=>p && p.id && p.cat !== undefined && p.name);
       PROJECTS.sort((a,b)=>a.id-b.id);
     }
     if(PROJECTS.length > 0){
@@ -28466,6 +28466,8 @@ function setLog(pid, week, progress, nextAction, hlType){
 // SIDEBAR
 // ────────────────────────────────────────────────────────
 function buildSidebar(){
+  // null混入を防ぐ安全弁
+  PROJECTS = PROJECTS.filter(p=>p && p.id && p.cat !== undefined && p.name);
   // CATEGORIESの順で表示（PROJECTS内の登場順に依存しない）
   const cats = CATEGORIES.filter(c=> PROJECTS.some(p=>p.cat===c));
   // CATEGORIESにないカテゴリ（カスタム追加分など）を末尾に追加
@@ -29726,13 +29728,30 @@ window.addEventListener('beforeunload', function(e){
 // BOOT（DOMContentLoaded後に実行）
 // ────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function(){
+  // Firebase取得中のローディング表示
+  const loadingEl = document.createElement('div');
+  loadingEl.id = '_boot-loading';
+  loadingEl.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:9990;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px';
+  loadingEl.innerHTML = `
+    <div style="width:28px;height:28px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div>
+    <div style="font-size:12px;color:var(--muted)">データを読み込み中…</div>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+  `;
+  document.body.appendChild(loadingEl);
+
   fbDB.get(function(err, data){
-    const isFirebaseData = !err && data && data.projects && data.projects.length > 0;
-    applyStoredData(isFirebaseData ? data : loadState());
-    initApp(isFirebaseData);
-    fbDB.writeLog('boot', `firebase:${isFirebaseData} projects:${PROJECTS.length}`);
-    // ログイン後にバックグラウンドポーリング開始
-    startPolling();
+    try {
+      const isFirebaseData = !err && data && data.projects && Object.keys(data.projects).length > 0;
+      applyStoredData(isFirebaseData ? data : loadState());
+      initApp(isFirebaseData);
+      fbDB.writeLog('boot', `firebase:${isFirebaseData} projects:${PROJECTS.length}`);
+      startPolling();
+    } catch(e) {
+      console.error('Boot error:', e);
+      try { showToast('読み込みエラー: ' + e.message); } catch(_){}
+    } finally {
+      loadingEl.remove();
+    }
   });
 });
 
