@@ -28021,8 +28021,8 @@ const LOGS_DEFAULT = {
 // ────────────────────────────────────────────────────────
 // FIREBASE REST API（SDK不要・読み込み順序問題なし）
 // ────────────────────────────────────────────────────────
-const FB_URL  = 'https://weekly-report-sub-default-rtdb.asia-southeast1.firebasedatabase.app/weekly_report_v3';
-const FB_LOG  = 'https://weekly-report-sub-default-rtdb.asia-southeast1.firebasedatabase.app/access_logs';
+const FB_URL  = 'https://weekly-report-v2-9c46e-default-rtdb.asia-southeast1.firebasedatabase.app/weekly_report_v3';
+const FB_LOG  = 'https://weekly-report-v2-9c46e-default-rtdb.asia-southeast1.firebasedatabase.app/access_logs';
 
 const fbDB = {
   get(callback){
@@ -28309,10 +28309,14 @@ function applyStoredData(stored){
     if(PROJECTS.length > 0){
       LOGS = stored.logs || {};
       HIGHLIGHTS = stored.highlights || {};
-      // reportPicksも新旧両形式に対応
       REPORT_PICKS = stored.reportPicks || {};
       if(stored.deptFull) DEPT_FULL = stored.deptFull;
       if(stored.categories && stored.categories.length) CATEGORIES = stored.categories;
+      // Firebaseのmembersを優先して反映
+      if(stored.members && Array.isArray(stored.members) && stored.members.length > 0){
+        MEMBERS = stored.members;
+        try{ localStorage.setItem('wr_members', JSON.stringify(MEMBERS)); }catch(e){}
+      }
       return;
     }
   }
@@ -28500,7 +28504,7 @@ function filterByCat(cat, el){
 // ────────────────────────────────────────────────────────
 let myOwner = '';
 let isAdmin = false;
-const FB_ADMIN = 'https://weekly-report-sub-default-rtdb.asia-southeast1.firebasedatabase.app/admin_session';
+const FB_ADMIN = 'https://weekly-report-v2-9c46e-default-rtdb.asia-southeast1.firebasedatabase.app/admin_session';
 
 // イニシャルマスター（メンバー管理と連動）
 const MEMBER_INITIALS = {
@@ -28536,6 +28540,7 @@ function loadMembers(){
 
 function saveMembers(){
   try{ localStorage.setItem('wr_members', JSON.stringify(MEMBERS)); }catch(e){}
+  fbDB.put('members', MEMBERS);
 }
 
 // ────────────────────────────────────────────────────────
