@@ -28118,7 +28118,7 @@ function saveState(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify({projects:PROJECTS, logs:LOGS, highlights:HIGHLIGHTS, reportPicks:REPORT_PICKS, deptFull:DEPT_FULL, categories:CATEGORIES})); }catch(e){}
   if(_firebaseSaveTimer) clearTimeout(_firebaseSaveTimer);
   _firebaseSaveTimer = setTimeout(()=>{
-    // 設定系は全体保存（競合リスクなし）
+    // 設定系・タイムスタンプのみ更新（logs/projects/highlightsは各操作で個別PUT）
     const ts = Date.now();
     window._lastTs = String(ts);
     fbDB.patch('', {
@@ -28126,22 +28126,10 @@ function saveState(){
       categories: CATEGORIES,
       _ts: ts
     });
-    // projectsは個別保存（競合防止）
-    PROJECTS.forEach(p=>{
-      fbDB.put(`projects/${p.id}`, p);
-    });
-    // logs・highlightsは個別保存（競合防止）
-    Object.entries(LOGS).forEach(([key, val])=>{
-      fbDB.put(`logs/${key}`, val);
-    });
-    Object.entries(HIGHLIGHTS).forEach(([week, hls])=>{
-      fbDB.put(`highlights/${week}`, hls);
-    });
     // REPORT_PICKSは週単位で個別保存（競合防止）
     Object.entries(REPORT_PICKS).forEach(([week, picks])=>{
       fbDB.put(`reportPicks/${week}`, picks);
     });
-    // アクセスログ記録
     fbDB.writeLog('saveState', `projects:${PROJECTS.length} logs:${Object.keys(LOGS).length}`);
   }, 500);
 }
@@ -28615,7 +28603,7 @@ function checkAdminSession(callback){
 function doLogin(admin){
   if(!loginSelected) return;
   myOwner = loginSelected;
-  try{ localStorage.setItem('wr_myowner', myOwner); }catch(e){}
+  try{ sessionStorage.setItem('wr_myowner', myOwner); }catch(e){}
   isAdmin = admin;
   if(admin){
     const session = {name: loginSelected, expiresAt: Date.now() + 30*60*1000};
@@ -28634,7 +28622,7 @@ function doLogin(admin){
 }
 
 function doLogout(){
-  try{ localStorage.removeItem('wr_myowner'); }catch(e){}
+  try{ sessionStorage.removeItem('wr_myowner'); }catch(e){}
   if(isAdmin){
     releaseAdminSession(()=>{
       fbDB.writeLog('logout', `name:${myOwner} admin:${isAdmin}`);
@@ -28698,12 +28686,12 @@ function buildMyViewTabs(){
 
 function selectMyViewMember(name){
   myOwner = name;
-  try{ localStorage.setItem('wr_myowner', name); }catch(e){}
+  try{ sessionStorage.setItem('wr_myowner', name); }catch(e){}
   buildMyViewTabs();
   renderMyView();
 }
 
-function saveMyOwner(val){ myOwner = val; try{ localStorage.setItem('wr_myowner', val); }catch(e){} }
+function saveMyOwner(val){ myOwner = val; try{ sessionStorage.setItem('wr_myowner', val); }catch(e){} }
 
 function renderMyView(){
   const el = document.getElementById('myviewList');
@@ -29230,6 +29218,7 @@ function saveProjectMeta(id){
   p.cat = document.getElementById('ef-cat').value;
   p.summary = document.getElementById('ef-summary').value.trim();
   p.kpi = document.getElementById('ef-kpi').value.trim();
+  fbDB.put(`projects/${p.id}`, p);
   saveState();
   buildSidebar();
   buildOwnerSelect();
@@ -29259,7 +29248,7 @@ function saveLog(pid){
   const hlType = existing?.hlType||'';
   const charsBefore = (existing?.progress||'').length;
   LOGS[logKey(pid, currentWeek)] = {progress, nextAction, hlType};
-  // アクセスログ：上書き前後の文字数も記録
+  fbDB.put(`logs/${logKey(pid, currentWeek)}`, {progress, nextAction, hlType});
   fbDB.writeLog('edit_save', `pid:${pid} week:${currentWeek} chars_before:${charsBefore} chars_after:${progress.length}`);
   saveState();
   // 保存ボタンをグレーに戻す＋完了表示
@@ -29301,6 +29290,8 @@ function toggleHL(pid, type){
     log.hlType=type;
   }
   LOGS[logKey(pid,currentWeek)] = {...(getLog(pid,currentWeek)||{}), ...log};
+  fbDB.put(`highlights/${currentWeek}`, HIGHLIGHTS[currentWeek]||[]);
+  fbDB.put(`logs/${logKey(pid,currentWeek)}`, LOGS[logKey(pid,currentWeek)]);
   saveState();
   renderDetail();
 }
@@ -29667,7 +29658,7 @@ function addProject(){
   const ownerParts = [...checked, ...(free ? [free] : [])];
   const owner = ownerParts.join('・');
   const newId = Math.max(...PROJECTS.map(p=>p.id))+1;
-  PROJECTS.push({
+  const newProject = {
     id:newId,
     cat:document.getElementById('m-cat').value,
     name,
@@ -29675,7 +29666,9 @@ function addProject(){
     summary:document.getElementById('m-summary').value.trim(),
     kpi:document.getElementById('m-kpi').value.trim(),
     status:'active'
-  });
+  };
+  PROJECTS.push(newProject);
+  fbDB.put(`projects/${newId}`, newProject);
   saveState();
   buildSidebar();
   buildOwnerSelect();
@@ -29802,7 +29795,7 @@ function initApp(isFirebaseData){
   showList();
   applyDeptName();
   loadMembers();
-  try{ myOwner = localStorage.getItem('wr_myowner')||''; }catch(e){}
+  try{ myOwner = sessionStorage.getItem('wr_myowner')||''; }catch(e){}
   if(!isFirebaseData && PROJECTS.length > 0){
     saveState();
   }
