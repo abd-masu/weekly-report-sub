@@ -28065,6 +28065,13 @@ const fbDB = {
     xhr.onerror = function(){ console.warn('Firebase put error:', path); };
     xhr.send(JSON.stringify(data));
   },
+  // 個別パスの削除
+  delete(path){
+    const xhr = new XMLHttpRequest();
+    xhr.open('DELETE', `${FB_URL}/${path}.json`, true);
+    xhr.onerror = function(){ console.warn('Firebase delete error:', path); };
+    xhr.send();
+  },
   // アクセスログ記録（30日以上古いログを自動削除）
   writeLog(action, detail){
     const ts = Date.now();
@@ -29309,7 +29316,11 @@ function deleteProject(){
   fbDB.writeLog('project_delete', `pid:${p.id} name:${p.name}`);
   const idx = PROJECTS.findIndex(x=>x.id===currentProjectId);
   if(idx>=0) PROJECTS.splice(idx,1);
-  Object.keys(LOGS).filter(k=>k.startsWith(currentProjectId+'_')).forEach(k=>delete LOGS[k]);
+  fbDB.delete(`projects/${currentProjectId}`);
+  Object.keys(LOGS).filter(k=>k.startsWith(currentProjectId+'_')).forEach(k=>{
+    fbDB.delete(`logs/${k}`);
+    delete LOGS[k];
+  });
   Object.values(HIGHLIGHTS).forEach(hls=>{
     const i = hls.findIndex(h=>h.projectId===currentProjectId);
     if(i>=0) hls.splice(i,1);
@@ -29329,6 +29340,7 @@ function toggleProjectStatus(){
   if(!p) return;
   if(p.status==='closed'){
     p.status='active';
+    fbDB.put(`projects/${p.id}`, p);
     fbDB.writeLog('project_restore', `pid:${p.id} name:${p.name}`);
     saveState();
     buildSidebar();
@@ -29336,6 +29348,7 @@ function toggleProjectStatus(){
   } else {
     if(!confirm(`「${p.name}」をクローズしますか？\n\n一覧からは非表示になりますが、サイドバーの「終了案件」から確認・復活できます。`)) return;
     p.status='closed';
+    fbDB.put(`projects/${p.id}`, p);
     fbDB.writeLog('project_close', `pid:${p.id} name:${p.name}`);
     saveState();
     buildSidebar();
